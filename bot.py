@@ -1,62 +1,51 @@
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import (
-    ApplicationBuilder, ContextTypes,
-    CommandHandler, CallbackQueryHandler
-)
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-import logging
-
-# Logging (untuk debug di Render log)
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler
+from apscheduler.schedulers.background import BackgroundScheduler
+import asyncio
 
 TOKEN = "8252579113:AAF_9zQEFe_W9lSH2KjHdFL4zu1MQK4xYY0"
 GROUP_CHAT_ID = -1002599585664  # Ganti dengan ID grup kamu
 
-# Daftar username
 USERS = [
     "@Zhen_8886", "@iamrendyy", "@Lcifer966", "@D黛安",
-    "@毗湿奴", "@Rafi_Al", "@拉騰", "@Deva", "@samasamterserah", "@Gatot_whose_hair_is_tied_up"
+    "@毗湿奴", "@Rafi_Al", "@拉騰", "@Deva", "@samasamterserah",
+    "@Gatot_whose_hair_is_tied_up", "@YANZAIDAN"  # Tambahan Kakang
 ]
 
-# Fungsi kirim pesan
-async def send_meal_reminder(context: ContextTypes.DEFAULT_TYPE, waktu: str):
-    mention_text = ' '.join(USERS)
-    pesan = f"⏰ *Waktu makan {waktu} telah tiba!*\n{mention_text}"
-    tombol = InlineKeyboardMarkup([[InlineKeyboardButton("OK ✅", callback_data="ok")]])
-    await context.bot.send_message(chat_id=GROUP_CHAT_ID, text=pesan, reply_markup=tombol, parse_mode="Markdown")
-
-# Callback tombol OK
+# Fungsi ketika tombol OK ditekan
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user = update.effective_user.username
-    await query.edit_message_text(text=f"{query.message.text}\n\n✅ Sudah dilihat oleh @{user}")
+    if user:
+        await query.edit_message_text(text=f"{query.message.text}\n\n✅ Sudah dilihat oleh @{user}")
+    else:
+        await query.edit_message_text(text=f"{query.message.text}\n\n✅ Sudah dilihat.")
 
-# /start command
+# Fungsi untuk kirim pesan
+async def send_meal_reminder(context: ContextTypes.DEFAULT_TYPE, waktu: str):
+    mention_text = ' '.join(USERS)
+    message = f"⏰ *Waktu makan {waktu} telah tiba!*\n{mention_text}"
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("OK ✅", callback_data="ok")]])
+    await context.bot.send_message(chat_id=GROUP_CHAT_ID, text=message, reply_markup=keyboard, parse_mode="Markdown")
+
+# Fungsi /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Bot aktif! Saya akan mengingatkan makan 3x sehari.")
+    await update.message.reply_text("✅ Bot aktif. Akan kirim pengingat makan setiap hari 3x.")
 
-# Fungsi utama
-async def main():
-    app = ApplicationBuilder().token(TOKEN).build()
-
-    # Handler
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_handler))
-
-    # Scheduler
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(send_meal_reminder, 'cron', hour=1, minute=40, args=[{"bot": app.bot}, "pagi"])
-    scheduler.add_job(send_meal_reminder, 'cron', hour=4, minute=30, args=[{"bot": app.bot}, "siang"])
-    scheduler.add_job(send_meal_reminder, 'cron', hour=10, minute=30, args=[{"bot": app.bot}, "sore"])
+# Fungsi scheduler wrapper
+def schedule_jobs(app):
+    scheduler = BackgroundScheduler(timezone="Asia/Jakarta")
+    scheduler.add_job(lambda: asyncio.create_task(send_meal_reminder(app.bot, "pagi")), trigger='cron', hour=8, minute=40)
+    scheduler.add_job(lambda: asyncio.create_task(send_meal_reminder(app.bot, "siang")), trigger='cron', hour=11, minute=30)
+    scheduler.add_job(lambda: asyncio.create_task(send_meal_reminder(app.bot, "sore")), trigger='cron', hour=17, minute=30)
     scheduler.start()
 
-    print("Bot sedang berjalan di Render...")
-    await app.run_polling()
-
+# Main function
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    schedule_jobs(app)
+    print("Bot berjalan di Render...")
+    app.run_polling()
